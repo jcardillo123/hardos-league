@@ -4,3 +4,8 @@ requests>=2.31
 python-dotenv>=1.0
 fastapi>=0.110
 uvicorn[standard]>=0.27
+
+# Only `tools.mobile_audit` needs this, and it also needs a browser binary that
+# pip does not install: `python -m playwright install chromium`. Skip both if
+# you are not touching the layout.
+playwright>=1.44

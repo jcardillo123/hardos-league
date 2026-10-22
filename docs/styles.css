@@ -262,7 +262,10 @@ tbody tr.clickable { cursor: pointer; }
 .chip.active { background: var(--accent); border-color: var(--accent); color: #0b0f14; font-weight: 700; }
 .chip.playoff { border-color: rgba(255, 200, 87, .45); }
 
-.matchups { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+/* `min(330px, 100%)` rather than a bare 330px: a bare track minimum is a
+   floor the grid cannot go under, so on a 320px phone the column stays 330px
+   wide and pushes the page sideways. */
+.matchups { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr)); }
 
 .mu {
   background: var(--panel);
@@ -339,7 +342,7 @@ table.matrix td.none { color: #4a535f; }
   margin-left: 7px;
 }
 
-.grid2 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+.grid2 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); }
 
 .empty { color: var(--muted); padding: 24px 0; }
 .err {
@@ -380,3 +383,59 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .dlg-title { font-size: 15px; font-weight: 700; flex: 1 1 auto; }
 .dlg-body { padding: 14px 16px 18px; overflow-y: auto; max-height: calc(86vh - 56px); }
 .dlg-body thead th { top: 0; }
+
+/* ------------------------------ narrow ---------------------------------- *
+ *
+ * Every table in here is `white-space: nowrap` over 6-12 columns, so its
+ * minimum width is around 980px no matter how narrow the window gets. On a
+ * phone that dragged the entire document sideways: the sticky tabs slid off
+ * the left edge, and every view scrolled independently of its own content.
+ *
+ * The fix is to give each table its own scrollport (`.tscroll`, emitted by
+ * `table()` in app.js) so the sideways scroll belongs to the table instead of
+ * the page. The deliberate cost: an element with `overflow-x: auto` becomes
+ * the scroll container for anything sticky inside it, so the sticky column
+ * headers stop tracking the viewport and would scroll away mid-table. They
+ * are switched off here rather than left half-working, and the first column
+ * is pinned instead - which is the one that actually matters, since without
+ * it you lose track of whose row you are reading. Above this breakpoint the
+ * widest table fits (978px + 36px of padding) and nothing changes.
+ *
+ * Note there is no `body { overflow-x: hidden }` anywhere. It would hide
+ * exactly this class of bug instead of fixing it, and tools/mobile_audit.py
+ * would then pass while the layout was still broken.
+ */
+@media (max-width: 1023px) {
+  .tscroll { overflow-x: auto; overscroll-behavior-x: contain; }
+
+  thead th { position: static; top: auto; }
+
+  /* `.pin` is the identity column, chosen per table in app.js - the manager
+     or the player, not the rank or the date that happens to come first. */
+  .tscroll > table.sortable th.pin,
+  .tscroll > table.sortable td.pin {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--bg);
+    /* Whatever scrolls under it must not show through at the edge. */
+    box-shadow: 1px 0 0 var(--line);
+  }
+  .tscroll > table.sortable thead th.pin { background: var(--panel); }
+  /* The pinned cell paints over the row, so it needs the hover tint itself. */
+  tbody tr:hover td.pin { background: var(--panel-2); }
+
+  main { padding: 14px 12px 60px; }
+  .topbar { padding: 9px 12px; gap: 10px; }
+  .tabs { padding: 0 6px; }
+  .grid2, .matchups { gap: 10px; }
+}
+
+/* Phones proper: claw back the last of the horizontal budget. */
+@media (max-width: 420px) {
+  main { padding: 12px 10px 48px; }
+  .brand { font-size: 15px; }
+  .freshness { font-size: 11px; }
+  thead th { padding: 6px 7px; }
+  tbody td { padding: 5px 7px; }
+}

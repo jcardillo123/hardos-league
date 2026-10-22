@@ -160,15 +160,26 @@ function clearErr() { $("err").hidden = true; }
  *  sortable tables
  * ------------------------------------------------------------------ */
 
-/* cols: [{key, label, left?, fmt?, cls?, sort?}]  `sort` overrides the raw
- * value used for ordering. Clicking a header re-sorts in place without
- * refetching. */
+/* cols: [{key, label, left?, fmt?, cls?, sort?, pin?}]  `sort` overrides the
+ * raw value used for ordering. Clicking a header re-sorts in place without
+ * refetching.
+ *
+ * `pin` marks the column that stays put when the table is scrolled sideways
+ * on a narrow screen - the one that says whose row you are looking at. It
+ * defaults to the first column, which is wrong wherever the first column is
+ * a rank or a date, so those tables name their own. */
 function table(rows, cols, opts = {}) {
   const id = "t" + Math.random().toString(36).slice(2, 8);
+  const pin = Math.max(0, cols.findIndex((c) => c.pin));
   const head = cols.map((c, i) =>
-    `<th class="${c.left ? "left" : ""}" data-i="${i}">${c.label}</th>`).join("");
+    `<th class="${c.left ? "left" : ""}${i === pin ? " pin" : ""}" ` +
+    `data-i="${i}">${c.label}</th>`).join("");
+  // The wrapper is what scrolls sideways on a narrow screen. Without it a
+  // 12-column table drags the whole page with it, and the sticky tabs slide
+  // off the left edge.
   const html =
-    `<table id="${id}"><thead><tr>${head}</tr></thead><tbody></tbody></table>`;
+    `<div class="tscroll"><table id="${id}" class="sortable">` +
+    `<thead><tr>${head}</tr></thead><tbody></tbody></table></div>`;
 
   // Rendering is deferred to a function so re-sorting reuses it.
   const draw = (root) => {
@@ -191,11 +202,12 @@ function table(rows, cols, opts = {}) {
         });
       }
       tb.innerHTML = sorted.map((r) => {
-        const tds = cols.map((c) => {
+        const tds = cols.map((c, i) => {
           const raw = r[c.key];
           const body = c.fmt ? c.fmt(r) : (raw ?? "&ndash;");
           const k = c.cls ? c.cls(r) : "";
-          return `<td class="${c.left ? "left " : ""}${k}">${body}</td>`;
+          return `<td class="${c.left ? "left " : ""}${k}` +
+                 `${i === pin ? " pin" : ""}">${body}</td>`;
         }).join("");
         const click = opts.onRow ? ' class="clickable"' : "";
         return `<tr${click} data-k="${esc(opts.rowKey ? opts.rowKey(r) : "")}">${tds}</tr>`;
@@ -359,7 +371,7 @@ async function renderStandings() {
       fmt: (r) => r.final_rank
         ? `<span class="medal medal-${r.final_rank}">${r.final_rank}</span>`
         : '<span class="dim">&ndash;</span>' },
-    { key: "owner_label", label: "Manager", left: true,
+    { key: "owner_label", label: "Manager", left: true, pin: true,
       fmt: (r) => `<span class="strong">${esc(r.owner_label)}</span>` +
                   `<span class="mu-team">${esc(r.team_name)}</span>` },
     { key: "wins", label: "Record",
@@ -471,9 +483,10 @@ async function toggleRoster(sideEl) {
       </tr>`).join("");
     const div = document.createElement("div");
     div.className = "roster-pop";
-    div.innerHTML = `<table><thead><tr>
+    div.innerHTML = `<div class="tscroll"><table><thead><tr>
       <th class="left">Slot</th><th class="left">Pos</th><th class="left">Player</th>
-      <th>Team</th><th>Proj</th><th>Pts</th></tr></thead><tbody>${rows}</tbody></table>`;
+      <th>Team</th><th>Proj</th><th>Pts</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
     sideEl.after(div);
   } catch (e) { showErr(e); }
 }
@@ -521,7 +534,7 @@ async function renderLuck() {
   mount("misses-body", table(m.misses, [
     { key: "season", label: "Season", left: true,
       fmt: (r) => `${r.season} wk${r.week}` },
-    { key: "owner_label", label: "Manager", left: true,
+    { key: "owner_label", label: "Manager", left: true, pin: true,
       fmt: (r) => esc(r.owner_label) },
     { key: "actual", label: "Started", fmt: (r) => n1(r.actual) },
     { key: "optimal", label: "Best available", fmt: (r) => n1(r.optimal) },
@@ -594,10 +607,10 @@ async function openRivalry(a, b) {
       </tr>`).join("");
     const r = d.record;
     openDialog(`${d.a.label} vs ${d.b.label} &mdash; ${r.w}-${r.l}${r.t ? "-" + r.t : ""}`,
-      `<table><thead><tr><th class="left">When</th><th>Result</th>` +
-      `<th>${esc(d.a.label.split(" ")[0])}</th>` +
+      `<div class="tscroll"><table><thead><tr><th class="left">When</th>` +
+      `<th>Result</th><th>${esc(d.a.label.split(" ")[0])}</th>` +
       `<th>${esc(d.b.label.split(" ")[0])}</th><th>Margin</th></tr></thead>` +
-      `<tbody>${rows}</tbody></table>`);
+      `<tbody>${rows}</tbody></table></div>`);
   } catch (e) { showErr(e); }
 }
 
@@ -661,14 +674,16 @@ async function openManager(guid) {
       </tr>`).join("");
     openDialog(esc(S.owners[guid] || "Manager"),
       `<h2>Season by season</h2>
-       <table><thead><tr><th class="left">Season</th><th class="left">Team</th>
+       <div class="tscroll"><table><thead><tr><th class="left">Season</th>
+       <th class="left">Team</th>
        <th>Record</th><th>PF</th><th>xW</th><th>Luck</th><th>Eff%</th>
-       <th>Finish</th></tr></thead><tbody>${seasons}</tbody></table>
+       <th>Finish</th></tr></thead><tbody>${seasons}</tbody></table></div>
        <h2>Most-rostered players</h2>
        <p class="note">The closest thing this data has to a personality test.</p>
-       <table><thead><tr><th class="left">Player</th><th class="left">Pos</th>
+       <div class="tscroll"><table><thead><tr><th class="left">Player</th>
+       <th class="left">Pos</th>
        <th>Weeks</th><th>Szns</th><th>Started</th><th>Points</th></tr></thead>
-       <tbody>${loyal}</tbody></table>`);
+       <tbody>${loyal}</tbody></table></div>`);
   } catch (e) { showErr(e); }
 }
 
@@ -701,7 +716,7 @@ async function renderPlayers() {
       { key: "season", label: "When", left: true,
         fmt: (r) => `${r.season} wk${r.week}`,
         sort: (r) => r.season * 100 + r.week },
-      { key: "player_name", label: "Player", left: true,
+      { key: "player_name", label: "Player", left: true, pin: true,
         fmt: (r) => esc(r.player_name) },
       { key: "position", label: "Pos", left: true, fmt: (r) => posTag(r.position) },
       { key: "owner_label", label: "Rostered by", left: true,
@@ -757,7 +772,7 @@ async function renderPlayers() {
     { key: "season", label: "When", left: true,
       fmt: (r) => `${r.season} wk${r.week}`,
       sort: (r) => r.season * 100 + r.week },
-    { key: "player_name", label: "Player", left: true,
+    { key: "player_name", label: "Player", left: true, pin: true,
       fmt: (r) => `<span class="strong">${esc(r.player_name)}</span>` },
     { key: "position", label: "Pos", left: true, fmt: (r) => posTag(r.position) },
     { key: "owner_label", label: "Manager", left: true,
@@ -811,7 +826,7 @@ async function renderRecords() {
           <td class="left">${who(r)}</td>
           <td class="strong">${what(r)}</td></tr>`).join("");
     return `<div class="card"><h2>${title}</h2>
-      <table><tbody>${rows}</tbody></table></div>`;
+      <div class="tscroll"><table><tbody>${rows}</tbody></table></div></div>`;
   }).join("");
 }
 

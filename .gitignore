@@ -15,6 +15,9 @@ __pycache__/
 # Downloaded parquet; re-fetchable, and large.
 data/cache/
 
+# `python -m tools.mobile_audit --shots` output; regenerate rather than track.
+.shots/
+
 # Live draft state and player pool; rebuilt by `python -m app.ingest`.
 data/draft.db
 data/draft.db-wal

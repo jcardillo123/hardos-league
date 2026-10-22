@@ -83,6 +83,20 @@ two is a complete verification. That is how it was checked in — 1099
 comparisons across every team-week roster, every manager, every rivalry pair in
 both directions, all 35 player-filter combinations, and a set of searches.
 
+Most people will open this on a phone, so there is a check for that:
+
+```bash
+.venv\Scripts\python.exe -m tools.mobile_audit
+```
+
+It serves `docs/` and drives Chromium across twelve widths from a 320px iPhone
+SE to a 1440px laptop, asserting that nothing hangs off the side of the page,
+that every table too wide for the screen can still be scrolled by a finger, and
+that the sticky positioning survived. It exits non-zero, so it gates a push the
+way `league.verify` gates a refresh — run it after anything that touches the
+layout, and add `--shots` to get screenshots in `.shots/`. Its docstring says
+why those three assertions and not just the first.
+
 Live at <https://jcardillo123.github.io/hardos-league/>, from `/docs` on
 `main` — pushing is publishing, there is no deploy step.
 
@@ -139,6 +153,9 @@ season and several managers have had more than one.
 | `main.py` | FastAPI routes and the one write (`POST /api/refresh`) |
 | `export.py` | freezes every API answer into `docs/` for GitHub Pages |
 | `static/` | the UI — plain HTML/CSS/JS, no build step |
+
+Plus one file outside this package: `tools/mobile_audit.py`, the headless-browser
+check on the published `docs/` build described under Publishing.
 
 Data lands in `data/league.db`. Raw ESPN responses are cached under
 `data/cache/league/`, so re-running an ingest over completed seasons costs
