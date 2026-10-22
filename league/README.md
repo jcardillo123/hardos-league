@@ -83,8 +83,15 @@ two is a complete verification. That is how it was checked in — 1099
 comparisons across every team-week roster, every manager, every rivalry pair in
 both directions, all 35 player-filter combinations, and a set of searches.
 
-Note that the page is public once Pages is on, whatever the repository's
-visibility — it carries real names, so it ships with `noindex, nofollow`.
+Live at <https://jcardillo123.github.io/hardos-league/>, from `/docs` on
+`main` — pushing is publishing, there is no deploy step.
+
+The repository is public. Not a preference: Pages will not serve a private
+repository on a Free plan, and the published page is public either way, so the
+choice was between a public repo and a $4/month subscription that would have
+hidden only the source. Nothing secret is in here — `.env` is ignored and
+`.env.example` carries placeholders — but it does carry real names, so the
+page ships with `noindex, nofollow` to keep it out of search results.
 
 ## What the numbers mean
 
