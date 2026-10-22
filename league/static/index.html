@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>League History</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<div class="stickyhead">
+<div class="topbar">
+  <div class="brand">League <span>History</span></div>
+  <select id="season-select" title="Season"></select>
+  <span id="live-pill" class="live-pill" hidden>IN PROGRESS</span>
+  <div class="spacer"></div>
+  <span id="freshness" class="freshness"></span>
+  <button id="refresh-btn" class="btn-accent" title="Re-pull this season from ESPN">
+    Refresh from ESPN
+  </button>
+</div>
+
+<div class="tabs" id="tabs">
+  <button class="tab active" data-view="standings">Standings</button>
+  <button class="tab" data-view="weekly">Weekly</button>
+  <button class="tab" data-view="luck">Luck &amp; Lineups</button>
+  <button class="tab" data-view="h2h">Head to Head</button>
+  <button class="tab" data-view="managers">Managers</button>
+  <button class="tab" data-view="players">Players</button>
+  <button class="tab" data-view="records">Record Book</button>
+</div>
+</div>
+
+<main>
+  <div id="err" class="err" hidden></div>
+
+  <!-- ------------------------------ standings ------------------------- -->
+  <section class="view active" id="view-standings">
+    <p class="note">
+      <b>xW</b> is expected wins from the all-play record &mdash; what each week's
+      score would have earned against the whole league instead of one scheduled
+      opponent. <b>Luck</b> is actual wins minus that. <b>Eff%</b> is points
+      scored as a share of the best lineup the roster could have fielded, which
+      unlike luck is the manager's own doing. Regular season only.
+    </p>
+    <div id="standings-body"></div>
+  </section>
+
+  <!-- ------------------------------- weekly -------------------------- -->
+  <section class="view" id="view-weekly">
+    <p class="note">
+      Click either side of a matchup to see the roster that was set, with the
+      bench underneath. <b>Opt</b> is the best lineup that roster could have
+      produced.
+    </p>
+    <div id="week-chips" class="week-chips"></div>
+    <div id="week-summary"></div>
+    <div id="matchups" class="matchups"></div>
+  </section>
+
+  <!-- -------------------------------- luck --------------------------- -->
+  <section class="view" id="view-luck">
+    <div class="controls">
+      <label class="dim" for="luck-scope">Scope</label>
+      <select id="luck-scope"></select>
+    </div>
+    <h2>Schedule luck</h2>
+    <p class="note">
+      Positive means the schedule handed over wins the scores did not earn.
+      All-play rate is computed per week before it is summed, so the 10-team and
+      12-team seasons are comparable.
+    </p>
+    <div id="luck-body"></div>
+
+    <h2>Points left on the bench</h2>
+    <p class="note">
+      The weeks with the largest gap between what was started and what was
+      available. <span class="flag">COST A WIN</span> marks the ones where the
+      optimal lineup would have flipped the result. Players on IR are excluded
+      &mdash; ESPN would not have let them start.
+    </p>
+    <div id="misses-body"></div>
+  </section>
+
+  <!-- -------------------------------- h2h ---------------------------- -->
+  <section class="view" id="view-h2h">
+    <div class="controls">
+      <label><input type="checkbox" id="h2h-regular"> Regular season only</label>
+    </div>
+    <p class="note">
+      Row manager's record against each column. Click a cell for the full game
+      log. Managers are matched on ESPN owner id, so a manager who renamed their
+      team still lines up across seasons.
+    </p>
+    <div id="h2h-body" class="matrix-scroll"></div>
+  </section>
+
+  <!-- ------------------------------ managers ------------------------- -->
+  <section class="view" id="view-managers">
+    <p class="note">All seasons folded together. Click a row for the season-by-season line.</p>
+    <div id="careers-body"></div>
+  </section>
+
+  <!-- ------------------------------- players ------------------------- -->
+  <section class="view" id="view-players">
+    <div class="controls">
+      <label class="dim" for="player-season">Season</label>
+      <select id="player-season"></select>
+      <label class="dim" for="player-pos">Position</label>
+      <select id="player-pos">
+        <option value="">All</option>
+        <option>QB</option><option>RB</option><option>WR</option>
+        <option>TE</option><option>K</option><option>DST</option>
+      </select>
+      <input type="text" id="player-search" placeholder="Search a player&hellip;" size="22">
+    </div>
+    <div id="players-body"></div>
+  </section>
+
+  <!-- ------------------------------- records ------------------------- -->
+  <section class="view" id="view-records">
+    <p class="note">League extremes across every season on record. Mostly for arguments.</p>
+    <div id="records-body" class="grid2"></div>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <div class="dlg-head">
+    <div class="dlg-title" id="dlg-title"></div>
+    <button id="dlg-close">Close</button>
+  </div>
+  <div class="dlg-body" id="dlg-body"></div>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

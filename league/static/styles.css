@@ -1,0 +1,382 @@
+/* League history: dense tables, read at a desk. Same palette as the draft tool
+   so the two tools look related, but this one scrolls and sorts rather than
+   fitting on one screen. */
+
+:root {
+  --bg: #0e1116;
+  --panel: #161b23;
+  --panel-2: #1d232d;
+  --panel-3: #232b36;
+  --line: #2a323d;
+  --text: #e6e9ee;
+  --muted: #8b95a5;
+  --accent: #4da3ff;
+  --me: #ffc857;
+  --good: #06d6a0;
+  --bad: #ff6b6b;
+
+  --qb: #ef476f;
+  --rb: #06d6a0;
+  --wr: #4da3ff;
+  --te: #ffd166;
+  --k:  #b388ff;
+  --dst: #8b95a5;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  min-height: 100vh;
+}
+
+/* ------------------------------ top bar --------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.brand { font-size: 17px; font-weight: 700; letter-spacing: .3px; }
+.brand span { color: var(--accent); }
+
+.spacer { flex: 1 1 auto; }
+
+select, input[type="text"], button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+}
+select:focus, input:focus { outline: 1px solid var(--accent); }
+button { cursor: pointer; }
+button:hover { background: var(--panel-3); }
+button:disabled { opacity: .5; cursor: default; }
+
+.btn-accent { border-color: var(--accent); color: var(--accent); }
+
+.freshness { color: var(--muted); font-size: 12px; }
+.live-pill {
+  background: rgba(255, 200, 87, .14);
+  color: var(--me);
+  border: 1px solid rgba(255, 200, 87, .4);
+  border-radius: 99px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .4px;
+}
+
+/* ------------------------------- tabs ----------------------------------- */
+
+/* The top bar and tabs stick as one block, and `--stick` is the measured
+   height of that block - set by app.js, because the top bar wraps to two rows
+   on a narrow window and a hardcoded offset would leave a gap that content
+   scrolls through. */
+.stickyhead { position: sticky; top: 0; z-index: 20; }
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--muted);
+  padding: 9px 14px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.tab:hover { background: var(--panel-2); color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+main { padding: 16px 18px 60px; max-width: 1480px; }
+.view { display: none; }
+.view.active { display: block; }
+
+/* ------------------------------ generic --------------------------------- */
+
+h2 { font-size: 15px; margin: 22px 0 8px; font-weight: 600; }
+h2:first-child { margin-top: 0; }
+
+.note {
+  color: var(--muted);
+  font-size: 12.5px;
+  margin: 0 0 12px;
+  max-width: 86ch;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+thead th {
+  text-align: right;
+  padding: 7px 9px;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11.5px;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  position: sticky;
+  top: var(--stick, 90px);
+  /* Needed, not decorative: the luck bars are absolutely positioned, so
+     without a z-index here they paint straight through the sticky header. */
+  z-index: 2;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+thead th:first-child, thead th.left { text-align: left; }
+thead th:hover { color: var(--text); }
+thead th.sorted { color: var(--accent); }
+
+tbody td {
+  text-align: right;
+  padding: 6px 9px;
+  border-bottom: 1px solid rgba(42, 50, 61, .55);
+  white-space: nowrap;
+}
+tbody td:first-child, tbody td.left { text-align: left; }
+tbody tr:hover { background: var(--panel-2); }
+tbody tr.clickable { cursor: pointer; }
+
+.num-good { color: var(--good); }
+.num-bad  { color: var(--bad); }
+.dim      { color: var(--muted); }
+.strong   { font-weight: 700; }
+
+.pos {
+  display: inline-block;
+  min-width: 30px;
+  text-align: center;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.pos.QB  { background: rgba(239,  71, 111, .18); color: var(--qb); }
+.pos.RB  { background: rgba(  6, 214, 160, .18); color: var(--rb); }
+.pos.WR  { background: rgba( 77, 163, 255, .18); color: var(--wr); }
+.pos.TE  { background: rgba(255, 209, 102, .18); color: var(--te); }
+.pos.K   { background: rgba(179, 136, 255, .18); color: var(--k); }
+.pos.DST { background: rgba(139, 149, 165, .18); color: var(--dst); }
+
+.medal { font-weight: 700; }
+.medal-1 { color: var(--me); }
+.medal-2 { color: #c9d2de; }
+.medal-3 { color: #c88a4a; }
+
+/* bar embedded in a table cell, for luck and efficiency */
+.bar-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  justify-content: flex-end;
+  width: 100%;
+}
+.bar {
+  width: 54px;
+  height: 7px;
+  border-radius: 99px;
+  background: var(--panel-3);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.bar > i { display: block; height: 100%; border-radius: 99px; }
+
+/* diverging bar, centred: used for luck */
+.dbar {
+  width: 104px;
+  height: 8px;
+  background: var(--panel-3);
+  border-radius: 2px;
+  position: relative;
+  flex: 0 0 auto;
+}
+.dbar::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--line);
+}
+.dbar > i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+}
+
+/* ---------------------------- weekly results ---------------------------- */
+
+.week-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.chip {
+  padding: 5px 11px;
+  font-size: 12.5px;
+  border-radius: 99px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.chip.active { background: var(--accent); border-color: var(--accent); color: #0b0f14; font-weight: 700; }
+.chip.playoff { border-color: rgba(255, 200, 87, .45); }
+
+.matchups { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+
+.mu {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.mu-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 11px;
+  background: var(--panel-2);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: .3px;
+  text-transform: uppercase;
+}
+.mu-side {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 8px 11px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(42, 50, 61, .5);
+}
+.mu-side:last-child { border-bottom: none; }
+.mu-side:hover { background: var(--panel-2); }
+.mu-side.win { background: rgba(6, 214, 160, .06); }
+.mu-name { flex: 1 1 auto; min-width: 0; }
+.mu-owner { font-weight: 600; }
+.mu-team { color: var(--muted); font-size: 11.5px; display: block; }
+.mu-score { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mu-side.win .mu-score { color: var(--good); }
+.mu-opt { color: var(--muted); font-size: 11.5px; min-width: 54px; text-align: right; }
+
+.roster-pop { padding: 0 11px 10px; background: var(--panel-2); }
+.roster-pop table { font-size: 12px; }
+.roster-pop thead th { position: static; top: auto; z-index: auto; background: var(--panel-2); cursor: default; }
+.bench-row td { color: var(--muted); }
+.bench-row .pos { opacity: .55; }
+
+/* -------------------------------- h2h ----------------------------------- */
+
+.matrix-scroll { overflow-x: auto; padding-bottom: 6px; }
+table.matrix { font-size: 11.5px; width: auto; }
+table.matrix th, table.matrix td {
+  padding: 4px 6px;
+  text-align: center;
+  border: 1px solid rgba(42, 50, 61, .6);
+  white-space: nowrap;
+}
+table.matrix thead th { position: static; top: auto; z-index: auto; text-transform: none; font-size: 11px; }
+table.matrix th.rowhead { text-align: left; font-weight: 600; color: var(--text); background: var(--panel); position: sticky; left: 0; z-index: 1; }
+table.matrix td.self { background: var(--panel-3); color: var(--muted); }
+table.matrix td.cell { cursor: pointer; }
+table.matrix td.cell:hover { outline: 1px solid var(--accent); }
+table.matrix td.none { color: #4a535f; }
+
+/* -------------------------------- misc ---------------------------------- */
+
+.swap { font-size: 12px; color: var(--muted); padding-left: 14px; }
+.swap b { color: var(--good); font-weight: 600; }
+.swap s { color: var(--bad); text-decoration: none; }
+
+.flag {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  color: var(--bad);
+  border: 1px solid rgba(255, 107, 107, .4);
+  background: rgba(255, 107, 107, .1);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 7px;
+}
+
+.grid2 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+
+.empty { color: var(--muted); padding: 24px 0; }
+.err {
+  color: var(--bad);
+  border: 1px solid rgba(255, 107, 107, .4);
+  background: rgba(255, 107, 107, .08);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.kv { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; }
+.kv > div { min-width: 92px; }
+.kv .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .3px; }
+.kv .v { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+dialog {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0;
+  max-width: 760px;
+  width: 92vw;
+  max-height: 86vh;
+}
+dialog::backdrop { background: rgba(0, 0, 0, .6); }
+.dlg-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+}
+.dlg-title { font-size: 15px; font-weight: 700; flex: 1 1 auto; }
+.dlg-body { padding: 14px 16px 18px; overflow-y: auto; max-height: calc(86vh - 56px); }
+.dlg-body thead th { top: 0; }

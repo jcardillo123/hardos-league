@@ -1,0 +1,28 @@
+# Credentials. ESPN_S2 and SWID are live session tokens for your whole ESPN
+# account - never let these reach a repo.
+.env
+.env.*
+!.env.example
+
+.venv/
+__pycache__/
+*.pyc
+
+# Per-machine tool approvals, full of absolute temp paths. launch.json is
+# shared on purpose; this one is not.
+.claude/settings.local.json
+
+# Downloaded parquet; re-fetchable, and large.
+data/cache/
+
+# Live draft state and player pool; rebuilt by `python -m app.ingest`.
+data/draft.db
+data/draft.db-wal
+data/draft.db-shm
+
+# The league archive. Rebuilt by `python -m league.ingest`, and its contents
+# are published in docs/data/ anyway - committing the binary too would add
+# another 1.7 MB to every refresh commit for nothing.
+data/league.db
+data/league.db-wal
+data/league.db-shm

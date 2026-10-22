@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Draft Board</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="clock">
+    <div class="clock-pick" id="clockPick">--</div>
+    <div class="clock-who" id="clockWho">loading…</div>
+  </div>
+
+  <div class="until" id="until"></div>
+
+  <div class="topbar-controls">
+    <input id="search" type="search" placeholder="Search player  ( / )" autocomplete="off">
+
+    <div class="seg" id="boardMode" title="Board layout">
+      <button class="seg-btn is-active" data-mode="positions">Positions</button>
+      <button class="seg-btn" data-mode="big">Big board</button>
+    </div>
+
+    <label class="sortwrap">
+      <span class="muted small">Sort</span>
+      <select id="sort" title="Ranking used to order the board">
+        <option value="ecr">ECR</option>
+        <option value="adp">Consensus ADP</option>
+        <option value="espn_adp">ESPN ADP</option>
+        <option value="vor">VOR</option>
+        <option value="proj">Projected</option>
+        <option value="last">Last season</option>
+        <option value="vegas_vor">Vegas VOR</option>
+        <option value="vegas_proj">Vegas projected</option>
+        <option value="edge">Vegas vs projection</option>
+      </select>
+    </label>
+
+    <span id="mockFlag" class="mockflag" hidden title="Mock mode: opponents are simulated">MOCK</span>
+    <button id="mockSim" class="btn" hidden title="Simulate opponents up to your next pick">Sim to me</button>
+    <button id="undo" class="btn" title="Undo last pick (Ctrl+Z)">Undo</button>
+    <nav class="tabs">
+      <button class="tab is-active" data-view="board">Board</button>
+      <button class="tab" data-view="grid">Grid</button>
+      <button class="tab" data-view="setup">Setup</button>
+    </nav>
+  </div>
+</header>
+
+<div id="sortWarning" class="banner-warn" hidden></div>
+<div id="toast" class="toast" hidden></div>
+
+<main>
+  <!-- ------------------------------ BOARD ------------------------------ -->
+  <section class="view is-active" id="view-board">
+    <div class="board-area">
+      <div class="board" id="board"></div>
+      <div class="bigboard" id="bigboard" hidden></div>
+    </div>
+
+    <aside class="sidebar">
+      <div class="panel" id="projPanel">
+        <h2>Next picks <span class="muted" id="projNote"></span></h2>
+        <div class="signalrow">
+          <span class="muted small">Board signal</span>
+          <div class="seg seg-sm" id="projSignal" title="Which market drives board availability">
+            <button class="seg-btn is-active" data-signal="ecr">ECR</button>
+            <button class="seg-btn" data-signal="adp">ADP</button>
+            <button class="seg-btn" data-signal="espn_adp">ESPN</button>
+          </div>
+        </div>
+        <ul class="proj" id="proj"></ul>
+        <p class="muted small" id="projHelp"></p>
+      </div>
+
+      <div class="panel" id="suggestPanel">
+        <h2>Suggested pick <span class="muted" id="suggestNote"></span></h2>
+        <div class="signalrow">
+          <span class="muted small">Value from</span>
+          <div class="seg seg-sm" id="valueSource" title="Which projection source scores these suggestions">
+            <button class="seg-btn" data-value="rankings">Proj</button>
+            <button class="seg-btn" data-value="vegas">Vegas</button>
+            <button class="seg-btn is-active" data-value="blend">Blend</button>
+          </div>
+        </div>
+        <div class="dropoff" id="dropoff"></div>
+        <ol class="suggest" id="suggest"></ol>
+        <p class="warn small" id="suggestWarn" hidden></p>
+        <p class="muted small" id="suggestHelp"></p>
+      </div>
+      <div class="panel">
+        <h2>My roster <span class="muted" id="rosterCount"></span></h2>
+        <div id="needs" class="needs"></div>
+        <ul class="roster" id="roster"></ul>
+      </div>
+      <div class="panel">
+        <h2>Recent picks</h2>
+        <ul class="recent" id="recent"></ul>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ------------------------------ GRID ------------------------------- -->
+  <section class="view" id="view-grid">
+    <div class="grid-wrap"><table class="grid" id="grid"></table></div>
+  </section>
+
+  <!-- ------------------------------ SETUP ----------------------------- -->
+  <section class="view" id="view-setup">
+    <div class="setup">
+      <div class="panel">
+        <h2>League</h2>
+        <label>Teams <input id="cfgTeams" type="number" min="4" max="20"></label>
+        <label>Rounds <input id="cfgRounds" type="number" min="1" max="30"></label>
+        <label>Scoring
+          <select id="cfgScoring">
+            <option value="ppr">Full PPR</option>
+            <option value="half">Half PPR</option>
+            <option value="standard">Standard</option>
+          </select>
+        </label>
+        <label>Order
+          <select id="cfgSnake">
+            <option value="snake">Snake</option>
+            <option value="linear">Linear</option>
+          </select>
+        </label>
+        <h3>Starting lineup</h3>
+        <div class="slots" id="cfgSlots"></div>
+        <button class="btn btn-primary" id="saveLeague">Save league</button>
+        <p class="muted small">
+          Changing team count or your draft slot resets the managers list, so it
+          is blocked once picks exist.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h2>Managers</h2>
+        <p class="muted small" id="managersHelp"></p>
+        <ul class="managers" id="managers"></ul>
+        <div id="managerDupe" class="warn small" hidden></div>
+        <button class="btn btn-primary" id="saveManagers">Save managers</button>
+        <button class="btn" id="seedManagers" title="Rebuild from league history">
+          Seed from history
+        </button>
+      </div>
+
+      <div class="panel">
+        <h2>Mock draft</h2>
+        <p class="muted small">
+          Your leaguemates draft for themselves, using the same model the Next
+          picks panel projects with — their phase tendencies, roster needs, what's
+          left on the board, and their reach habit.
+        </p>
+        <label>My seat
+          <select id="mockSlot" class="grow"></select>
+        </label>
+        <label>Board signal
+          <select id="mockSignal" class="grow">
+            <option value="ecr">ECR</option>
+            <option value="adp">Consensus ADP</option>
+            <option value="espn_adp">ESPN ADP</option>
+          </select>
+        </label>
+        <label>Seed <input id="mockSeed" type="number" placeholder="random"></label>
+        <button class="btn btn-primary" id="mockStart">Start mock draft</button>
+        <button class="btn" id="mockStop">Exit mock mode</button>
+        <p class="warn small" id="mockWarn">
+          Starting a mock <strong>clears the board</strong>. Bots never pick for
+          you — simulation always stops at your turn.
+        </p>
+        <div id="mockLog" class="mocklog"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Player pool</h2>
+        <p class="muted small" id="poolInfo"></p>
+        <p class="muted small">
+          Drop a FantasyPros CSV export into <code>data/rankings/</code> and
+          rebuild. The newest file wins. With no CSV present the pool falls back
+          to last season's production, where ECR, VOR and Projected are all
+          derived from the same number — so sorting by them gives the same order.
+        </p>
+        <button class="btn" id="rebuild">Rebuild pool</button>
+        <button class="btn" id="rebuildRefresh">Rebuild + re-download stats</button>
+        <hr>
+        <h3>Danger</h3>
+        <button class="btn btn-danger" id="reset">Reset draft</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
