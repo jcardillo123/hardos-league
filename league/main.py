@@ -186,6 +186,18 @@ def api_records():
         return queries.record_book(conn)
 
 
+@app.get("/api/moves")
+def api_moves(season: int | None = None):
+    """Trades and pickups together: the tab needs all three at once."""
+    with db.session() as conn:
+        return {
+            "season": season,
+            "trades": queries.trade_grades(conn, season),
+            "pickups": queries.waiver_pickups(conn, season, limit=60),
+            "managers": queries.transaction_summary(conn, season),
+        }
+
+
 # --------------------------------------------------------------------------- #
 #  refresh
 # --------------------------------------------------------------------------- #

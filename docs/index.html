@@ -29,6 +29,7 @@
   <button class="tab" data-view="h2h">Head to Head</button>
   <button class="tab" data-view="managers">Managers</button>
   <button class="tab" data-view="players">Players</button>
+  <button class="tab" data-view="moves">Trades &amp; Waivers</button>
   <button class="tab" data-view="records">Record Book</button>
 </div>
 </div>
@@ -117,6 +118,55 @@
       <input type="text" id="player-search" placeholder="Search a player&hellip;" size="22">
     </div>
     <div id="players-body"></div>
+  </section>
+
+  <!-- ---------------------------- trades/waivers --------------------- -->
+  <section class="view" id="view-moves">
+    <div class="controls">
+      <label class="dim" for="moves-scope">Scope</label>
+      <select id="moves-scope"></select>
+    </div>
+
+    <h2>Trades, graded</h2>
+    <p class="note">
+      One row per side of a trade, best return first &mdash; so the winner of a
+      deal and the manager who lost it are the same trade seen twice. <b>Net</b>
+      is what the players received went on to score from that week onwards,
+      minus what the players sent away scored for their new team, counted only
+      while each one stayed on the roster he moved to. <b>Before</b> is what the
+      two sides had already scored that season when the deal was struck, which
+      is what the managers were looking at: a side that gave up a big number
+      before and a small one after sold at the right time. Grades are z-scores
+      of net across all 65 trades in league history, so the scope control never
+      changes a letter. Click a row for every player in the deal.
+    </p>
+    <div id="trades-body"></div>
+
+    <h2>Best waiver and free-agent pickups</h2>
+    <p class="note">
+      Ranked by <b>started</b> points after the pickup rather than total points,
+      because a pickup is only worth what actually made it into the lineup.
+      Points stop counting the week the player left that roster.
+    </p>
+    <div id="pickups-body"></div>
+
+    <h2>Who deals, and how it goes</h2>
+    <p class="note">
+      Every trade side and every pickup folded together per manager. Trade net
+      sums to zero across the league by construction, so this is a ranking of
+      the same pie being divided.
+    </p>
+    <div id="movers-body"></div>
+
+    <p class="note dim">
+      Trades are reconstructed by diffing week-to-week rosters, because ESPN
+      serves no player list for 55 of the 65 trades on record. Players dropped
+      and claimed by somebody else in the same week are excluded first so they
+      cannot be mistaken for a trade. A <span class="flag">ONE SIDED</span> flag
+      means only one direction of a deal was recoverable &mdash; either a leg of
+      a three-team trade, or a player cut the moment he arrived &mdash; so the
+      grade on that row is missing whatever came back the other way.
+    </p>
   </section>
 
   <!-- ------------------------------- records ------------------------- -->

@@ -57,7 +57,8 @@ VIEWPORTS = [
     ("laptop large", 1440, 900),
 ]
 
-TABS = ["standings", "weekly", "luck", "h2h", "managers", "players", "records"]
+TABS = ["standings", "weekly", "luck", "h2h", "managers", "players", "moves",
+        "records"]
 
 OVERFLOW = """
 () => {

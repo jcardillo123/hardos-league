@@ -2,7 +2,7 @@
 
 A dashboard over five seasons of the ESPN league — standings, weekly results,
 schedule luck, lineup decisions, head-to-head, manager careers, player history,
-and a record book.
+graded trades and waiver pickups, and a record book.
 
 Separate from the draft tool on purpose. The draft tool's database is wiped and
 rebuilt on every ingest and holds live picks during a draft; this one is an
@@ -128,7 +128,29 @@ Regular season only, everywhere luck appears: playoff matchups are decided by
 seeding, so counting them folds the reward for a good regular season back into
 the measure of it.
 
-## Two things that will bite anyone editing this
+**Net (trades)** — what the players a manager received went on to score from
+the week of the trade onwards, minus what the players he sent away scored for
+their new team. Both sides are counted only while the player stayed on the
+roster he moved to, so trading for a rental and cutting him two weeks later
+earns two weeks of credit and no more.
+
+**Before (trades)** — what those same two sets of players had already scored
+that season when the deal was struck. It is reported and never graded, because
+it is not a verdict, it is the information the two managers were looking at: a
+side that gave up a big number before and a small one after sold at the top.
+
+**Grade** — the z-score of Net, cut into letters. The distribution behind it is
+always every side of every trade in league history, and the scope control
+filters the list afterwards, so a B in 2022 is a B in 2026 and narrowing to one
+season never re-grades a trade. Net sums to zero across the league by
+construction: every trade is graded twice, once from each side.
+
+**Started pts (pickups)** — the part of what a pickup scored that was actually
+in the starting lineup. The waiver board ranks on this rather than total
+points, because a streaming quarterback who sat half the weeks he was owned
+scored plenty that never reached a scoreboard. Both numbers are shown.
+
+## Three things that will bite anyone editing this
 
 **All-play must be reduced to a per-week rate before it is summed.** The league
 grew from 10 teams to 12 in 2024. Beating 9 of 9 and beating 11 of 11 are both
@@ -140,13 +162,28 @@ arithmetic again.
 **Managers join on `owner_guid`, never on name.** Team names change every
 season and several managers have had more than one.
 
+**Trades are reconstructed from roster diffs, not read out of ESPN.** ESPN's
+transaction log says a trade was accepted but serves a player list for only 10
+of this league's 65 — and one of those ten contradicts the rosters outright,
+because the proposal it points at had been superseded. So the log supplies the
+*when* and the week-to-week rosters supply the *what*. Two traps come with
+that, both already handled in `build_moves`: a player dropped by one team and
+claimed by another in the same week looks exactly like a trade, so every player
+a `WAIVER`/`FREEAGENT`/`ROSTER`/`DRAFT` row touched that week is excluded
+first; and a player traded for and cut before the next snapshot appears on
+nobody's roster, so he is recovered from the drop row that names a team he was
+not on last week. Edges are grouped into deals by unordered team pair rather
+than by connected component — grouping by component fused every trade a busy
+manager made in one week into a single sixteen-player monster. The long comment
+above `build_moves` has the counts behind each of those choices.
+
 ## Layout
 
 | file | what it does |
 | --- | --- |
 | `config.py` | paths, ESPN id maps, the league's shape |
 | `espn.py` | the ESPN client and the disk cache under `data/cache/league/` |
-| `ingest.py` | pulls a season and writes `seasons`/`teams`/`matchups`/`team_weeks`/`lineups` |
+| `ingest.py` | pulls a season and writes `seasons`/`teams`/`matchups`/`team_weeks`/`lineups`/`moves` |
 | `stats.py` | pure functions: optimal lineup, all-play, expected wins |
 | `verify.py` | reconciles stored scores against ESPN's own; run after every ingest |
 | `queries.py` | the read layer, one function per view |

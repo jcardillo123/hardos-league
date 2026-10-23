@@ -182,6 +182,16 @@ def main() -> int:
         })
         total += _write("records.json", queries.record_book(conn))
 
+        # One blob per scope, shaped exactly like the `/api/moves` answer so the
+        # static reader can hand it straight to the same render function.
+        total += _write("moves.json", {
+            scope: {
+                "trades": queries.trade_grades(conn, y),
+                "pickups": queries.waiver_pickups(conn, y, limit=60),
+                "managers": queries.transaction_summary(conn, y),
+            } for scope, y in [("all", None)] + [(str(y), y) for y in years]
+        })
+
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         total += _write("manifest.json", {
             "generated_at": stamp,

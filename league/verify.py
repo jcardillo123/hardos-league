@@ -12,6 +12,7 @@ that would catch that:
   2. my win/loss record vs the record ESPN reports on the team
   3. optimal >= actual, which must hold by construction
   4. coverage and null counts
+  5. the reconstructed trades, which are the one table ESPN cannot confirm
 
 Exit status is 0 when everything passes and 1 when a check fails, so this can
 gate a refresh.
@@ -19,7 +20,7 @@ gate a refresh.
 
 import sys
 
-from . import db
+from . import db, queries
 
 # ESPN's `totalPoints` on this one matchup disagrees with every player-level
 # number ESPN serves for the same team-week. See the note in `ingest.py`.
@@ -135,6 +136,91 @@ def check_coverage(conn) -> list[str]:
     return problems
 
 
+def check_moves(conn) -> list[str]:
+    """The trade reconstruction, which has no upstream number to check against.
+
+    ESPN serves a player list for 10 of this league's 65 trades, so checks 1-4
+    have no equivalent here: there is nothing to compare the other 55 to. What
+    there is instead are properties the reconstruction cannot violate if it is
+    right, and the strongest of them is antisymmetry. Every player counted as
+    received by one team is counted as sent away by another, with the same
+    points attached, so every side's net has an exact opposite somewhere and
+    the league-wide sum is zero. A player attributed to the wrong team, counted
+    twice, or dropped from one side of a pair all break that sum.
+
+    The one-sided trades are the exception and are reported rather than failed:
+    a leg of a three-team deal has no opposite side to cancel against, and this
+    league has 13 of them - 26 sides, since the manager who received nothing
+    back carries the flag too. They cancel in the total all the same, because
+    the other leg is also in the table.
+    """
+    problems = []
+    counts = {r["kind"]: r["n"] for r in conn.execute(
+        "SELECT kind, COUNT(*) n FROM moves GROUP BY kind")}
+    sides = queries.trade_grades(conn)
+    trades = {s["trade_id"] for s in sides}
+    one_sided = sum(1 for s in sides if s["one_sided"])
+    net = round(sum(s["net"] for s in sides), 2)
+
+    print(f"\n5. moves: {sum(counts.values())} rows "
+          f"({', '.join(f'{k} {v}' for k, v in sorted(counts.items()))})")
+    print(f"     {len(trades)} trades, {len(sides)} sides, "
+          f"{one_sided} one-sided, league-wide trade net {net:+.2f}")
+
+    if abs(net) > TOLERANCE:
+        problems.append(
+            f"trade net sums to {net:+.2f} across the league, not zero - a "
+            "player is attributed to a team that did not receive him")
+
+    bad = conn.execute(
+        "SELECT "
+        "  SUM(CASE WHEN kind='TRADE' AND trade_id IS NULL THEN 1 ELSE 0 END) a, "
+        "  SUM(CASE WHEN kind<>'TRADE' AND trade_id IS NOT NULL THEN 1 ELSE 0 END) b, "
+        "  SUM(CASE WHEN weeks_after = 0 AND pts_after <> 0 THEN 1 ELSE 0 END) d, "
+        "  SUM(CASE WHEN player_name IS NULL THEN 1 ELSE 0 END) e "
+        "FROM moves").fetchone()
+    for key, msg in (
+        ("a", "TRADE rows with no trade_id - they cannot be paired into a deal"),
+        ("b", "non-trade rows carrying a trade_id"),
+        ("d", "rows that scored points over zero weeks held"),
+    ):
+        if bad[key]:
+            problems.append(f"{bad[key]} {msg}")
+    # Not a failure: ESPN drops the name of a player nobody has rostered since,
+    # and the UI already filters those out of the pickup list.
+    if bad["e"]:
+        print(f"     {bad['e']} rows have no player name (ESPN no longer "
+              "serves one); they are excluded from the pickup board")
+
+    # `pts_after` minus `started_after` is by definition what the player scored
+    # from the bench over the same run of weeks, so it has to equal the bench
+    # total read straight back out of `lineups`. This catches a run that walked
+    # the wrong number of weeks or counted a week on the wrong roster, which an
+    # inequality would not: the gap is frequently negative and legitimately so,
+    # because a defense that gives up 40 points scores below zero.
+    gap = conn.execute(
+        "SELECT COUNT(*) n FROM moves m WHERE m.weeks_after > 0 AND "
+        "  ABS((m.pts_after - m.started_after) - COALESCE(("
+        "    SELECT SUM(l.points) FROM lineups l "
+        "    WHERE l.season = m.season AND l.player_id = m.player_id "
+        "      AND l.team_id = m.to_team AND l.started = 0 "
+        "      AND l.week BETWEEN MAX(m.week, 1) "
+        "                     AND MAX(m.week, 1) + m.weeks_after - 1"
+        "  ), 0)) > 0.011").fetchone()["n"]
+    if gap:
+        problems.append(
+            f"{gap} moves where pts_after - started_after does not match the "
+            "bench points in `lineups` over the weeks held")
+
+    orphans = conn.execute(
+        "SELECT COUNT(*) n FROM moves m LEFT JOIN teams t "
+        "  ON t.season = m.season AND t.team_id = m.to_team "
+        "WHERE t.team_id IS NULL").fetchone()["n"]
+    if orphans:
+        problems.append(f"{orphans} moves land on a team that season has no row for")
+    return problems
+
+
 def main() -> int:
     with db.session() as conn:
         problems = (
@@ -142,6 +228,7 @@ def main() -> int:
             + check_records(conn)
             + check_optimal(conn)
             + check_coverage(conn)
+            + check_moves(conn)
         )
 
     print()

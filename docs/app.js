@@ -114,6 +114,8 @@ async function stat(path) {
       return { board: (await file("luck.json"))[q.get("season") || "all"] };
     case "lineup-misses":
       return { misses: (await file("misses.json"))[q.get("season") || "all"] };
+    case "moves":
+      return (await file("moves.json"))[q.get("season") || "all"];
     case "h2h":
       return (await file("h2h.json"))[
         q.get("regular_only") === "true" ? "regular" : "full"];
@@ -303,6 +305,8 @@ async function boot() {
       `<option value="${s.season}">${s.season}</option>`).join("");
     $("player-season").innerHTML = allOpt + d.seasons.map((s) =>
       `<option value="${s.season}">${s.season}</option>`).join("");
+    $("moves-scope").innerHTML = allOpt + d.seasons.map((s) =>
+      `<option value="${s.season}">${s.season}</option>`).join("");
 
     const owners = await api("/api/owners");
     owners.owners.forEach((o) => { S.owners[o.owner_guid] = o.label; });
@@ -352,7 +356,7 @@ function render() {
   const fn = {
     standings: renderStandings, weekly: renderWeekly, luck: renderLuck,
     h2h: renderH2H, managers: renderCareers, players: renderPlayers,
-    records: renderRecords,
+    moves: renderMoves, records: renderRecords,
   }[S.view];
   if (fn) fn().catch(showErr);
 }
@@ -789,7 +793,186 @@ async function renderPlayers() {
 }
 
 /* ------------------------------------------------------------------ *
- *  7. record book
+ *  7. trades and waivers
+ * ------------------------------------------------------------------ */
+
+/* A+ and A share a colour, and so would A and B if the eye could not tell
+ * them apart - the point of the pill is to be readable at a glance down a
+ * column of 130 rows, not to encode six distinct values. */
+const GRADE_CLS = { "A+": "g-a", A: "g-a", B: "g-b", C: "g-c", D: "g-d", F: "g-f" };
+const gradeTag = (g) =>
+  `<span class="grade ${GRADE_CLS[g] || "g-c"}">${esc(g)}</span>`;
+
+const PICKUP_KIND = { WAIVER: "Waiver", FREEAGENT: "Free agent" };
+
+/* The headline player of a side and a count of the rest.
+ *
+ * One line each way, not a full list: the query hands back every player in the
+ * deal, but 130 rows of six-name cells is not a table anybody reads, and the
+ * whole deal is one click away in the dialog. The rows are already two lines
+ * tall for the team name, so two more costs nothing. */
+function topName(players, got) {
+  if (!players.length) return '<div class="swap dim">nothing recoverable</div>';
+  const [p] = players;                     // the query sorts by pts_after
+  const rest = players.length - 1;
+  return `<div class="swap">${got ? "<b>" : "<s>"}${esc(p.player_name)}` +
+         `${got ? "</b>" : "</s>"} ${n1(p.pts_after)}` +
+         (rest ? ` <span class="dim">+${rest}</span>` : "") + "</div>";
+}
+
+$("moves-scope").onchange = () => renderMoves().catch(showErr);
+
+async function renderMoves() {
+  const scope = $("moves-scope").value;
+  const d = await api("/api/moves" + (scope ? `?season=${scope}` : ""));
+
+  // Keyed so a row click can find its own side again without a second
+  // request: every player in the deal is already in the payload.
+  const byKey = new Map();
+  d.trades.forEach((t) => byKey.set(`${t.trade_id}|${t.team_id}`, t));
+
+  if (!d.trades.length) {
+    $("trades-body").innerHTML =
+      '<p class="empty">No trades were made in this scope.</p>';
+  } else {
+    const maxNet = Math.max(1, ...d.trades.map((t) => Math.abs(t.net)));
+    mount("trades-body", table(d.trades, [
+      { key: "season", label: "When", left: true,
+        fmt: (r) => `${r.season} wk${r.week}`,
+        sort: (r) => r.season * 100 + r.week },
+      // Both managers in the one pinned cell. A trade is a row about a pair,
+      // and splitting the pair across two columns cost more width than the
+      // table had: the opponent would scroll out of reach on a phone, which
+      // is the one thing the pinned column exists to prevent.
+      { key: "owner_label", label: "Manager", left: true, pin: true,
+        fmt: (r) => `<span class="strong">${esc(r.owner_label)}</span>` +
+          `<span class="mu-team">with ${esc(r.opp_owner_label || "?")}</span>` },
+      { key: "grade", label: "Grade", sort: (r) => r.z ?? 0,
+        fmt: (r) => gradeTag(r.grade) +
+          (r.one_sided ? '<span class="flag">ONE SIDED</span>' : "") },
+      { key: "net", label: "Net", fmt: (r) => dbar(r.net, maxNet) },
+      { key: "got_after", label: "Got", fmt: (r) => n1(r.got_after) },
+      { key: "gave_after", label: "Gave", fmt: (r) => n1(r.gave_after) },
+      { key: "got_before", label: "Before",
+        sort: (r) => r.got_before - r.gave_before,
+        fmt: (r) => `<span class="dim">${n1(r.got_before)} for ` +
+                    `${n1(r.gave_before)}</span>` },
+      { key: "got", label: "In the deal", left: true,
+        sort: (r) => r.got.length + r.gave.length,
+        fmt: (r) => topName(r.got, true) + topName(r.gave, false) },
+    ], {
+      rowKey: (r) => `${r.trade_id}|${r.team_id}`,
+      onRow: (k) => byKey.has(k) && openTrade(byKey.get(k)),
+      sortBy: 3,
+    }));
+  }
+
+  if (!d.pickups.length) {
+    $("pickups-body").innerHTML =
+      '<p class="empty">Nobody was picked up in this scope.</p>';
+  } else {
+    mount("pickups-body", table(d.pickups, [
+      { key: "season", label: "When", left: true,
+        fmt: (r) => `${r.season} wk${r.week}`,
+        sort: (r) => r.season * 100 + r.week },
+      { key: "player_name", label: "Player", left: true, pin: true,
+        fmt: (r) => `<span class="strong">${esc(r.player_name)}</span>` },
+      { key: "position", label: "Pos", left: true,
+        fmt: (r) => posTag(r.position) },
+      { key: "owner_label", label: "Picked up by", left: true,
+        fmt: (r) => esc(r.owner_label) },
+      { key: "kind", label: "How", left: true,
+        fmt: (r) => `<span class="dim">${PICKUP_KIND[r.kind] || esc(r.kind)}</span>` },
+      { key: "started_after", label: "Started pts",
+        fmt: (r) => `<span class="strong num-good">${n1(r.started_after)}</span>` },
+      { key: "pts_after", label: "Total pts", fmt: (r) => n1(r.pts_after) },
+      { key: "weeks_after", label: "Weeks held" },
+      { key: "bench", label: "In lineup",
+        sort: (r) => r.pts_after ? r.started_after / r.pts_after : 0,
+        fmt: (r) => bar(r.pts_after ? r.started_after / r.pts_after * 100 : 0,
+                        "var(--accent)") },
+    ], { sortBy: 5 }));
+  }
+
+  if (!d.managers.length) {
+    $("movers-body").innerHTML =
+      '<p class="empty">Nothing moved in this scope.</p>';
+  } else {
+    const maxNet = Math.max(1, ...d.managers.map((r) => Math.abs(r.trade_net)));
+    mount("movers-body", table(d.managers, [
+      { key: "owner_label", label: "Manager", left: true, pin: true,
+        fmt: (r) => `<span class="strong">${esc(r.owner_label || "Unknown")}</span>` },
+      { key: "trades", label: "Trades" },
+      { key: "wins", label: "Won",
+        sort: (r) => r.trades ? r.wins / r.trades : 0,
+        fmt: (r) => r.trades
+          ? `${r.wins}<span class="dim">/${r.trades}</span>` : "&ndash;" },
+      { key: "trade_net", label: "Trade net",
+        fmt: (r) => dbar(r.trade_net, maxNet) },
+      { key: "got_after", label: "Got", fmt: (r) => n1(r.got_after) },
+      { key: "gave_after", label: "Gave", fmt: (r) => n1(r.gave_after) },
+      { key: "pickups", label: "Pickups" },
+      { key: "pickup_started", label: "Pickup pts",
+        fmt: (r) => n1(r.pickup_started) },
+      { key: "best_pickup", label: "Best pickup", left: true,
+        sort: (r) => r.best_pickup_pts ?? 0,
+        fmt: (r) => r.best_pickup
+          ? `<span class="strong">${esc(r.best_pickup)}</span>` +
+            `<span class="mu-team">${r.best_pickup_season} &middot; ` +
+            `${n1(r.best_pickup_pts)} started</span>`
+          : "&ndash;" },
+    ], {
+      sortBy: 3,
+      rowKey: (r) => r.owner_guid,
+      onRow: (guid) => guid && openManager(guid),
+    }));
+  }
+}
+
+/* The whole deal, both sides, from the row that was clicked. `Before` and
+ * `After` sit in adjacent columns on purpose: that pair is the only thing
+ * that separates a manager who read the market from one who got lucky. */
+function openTrade(t) {
+  const side = (players, got) => players.length
+    ? players.map((p) => `
+      <tr>
+        <td class="left">${esc(p.player_name)}</td>
+        <td class="left">${posTag(p.position)}</td>
+        <td class="dim">${n1(p.pts_before)}</td>
+        <td class="strong ${got ? "num-good" : "num-bad"}">${n1(p.pts_after)}</td>
+        <td>${n1(p.started_after)}</td>
+        <td>${p.weeks_after}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="6" class="left dim">Nothing recoverable on this ` +
+      `side &mdash; see the note under the table.</td></tr>`;
+
+  const head = `<thead><tr><th class="left">Player</th><th class="left">Pos</th>
+    <th>Before</th><th>After</th><th>Started</th><th>Weeks</th></tr></thead>`;
+
+  openDialog(
+    `${esc(t.owner_label)} &middot; ${t.season} wk${t.week} ` +
+    `&middot; ${gradeTag(t.grade)} <span class="${cls(t.net)}">` +
+    `${signed(t.net)}</span>`,
+    `<div class="kv">
+       <div><div class="k">Team</div><div class="v">${esc(t.team_name || "—")}</div></div>
+       <div><div class="k">With</div><div class="v">${esc(t.opp_owner_label || "—")}</div></div>
+       <div><div class="k">Got</div><div class="v">${n1(t.got_after)}</div></div>
+       <div><div class="k">Gave</div><div class="v">${n1(t.gave_after)}</div></div>
+       <div><div class="k">Net</div><div class="v ${cls(t.net)}">${signed(t.net)}</div></div>
+       <div><div class="k">Net started</div><div class="v ${cls(t.net_started)}">${signed(t.net_started)}</div></div>
+       <div><div class="k">z</div><div class="v">${n2(t.z)}</div></div>
+     </div>
+     <h2>Received</h2>
+     <div class="tscroll"><table>${head}<tbody>${side(t.got, true)}</tbody></table></div>
+     <h2>Sent away</h2>
+     <div class="tscroll"><table>${head}<tbody>${side(t.gave, false)}</tbody></table></div>
+     <p class="note">Points are counted from week ${t.week} onwards and stop
+     the week a player left the roster he moved to, so a rental earns credit
+     only for the weeks he was actually owned.</p>`);
+}
+
+/* ------------------------------------------------------------------ *
+ *  8. record book
  * ------------------------------------------------------------------ */
 
 const RECORD_SPECS = [

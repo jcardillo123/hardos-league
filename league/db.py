@@ -115,6 +115,35 @@ CREATE TABLE IF NOT EXISTS team_weeks (
 );
 CREATE INDEX IF NOT EXISTS idx_tw_season ON team_weeks(season, team_id);
 
+-- One row per player who changed hands, derived at ingest. See the long note
+-- above `build_moves` in `ingest.py` for why this is reconstructed from roster
+-- diffs rather than read straight out of ESPN's transaction log: the log says
+-- when a trade happened and the roster says what actually moved, and for 55 of
+-- this league's 65 trades the log alone cannot say.
+--
+-- The value columns are the point of the table. They are computed once here
+-- because "what did this player score after he changed hands" needs a walk
+-- forward through `lineups` per row, which is not expressible in useful SQL.
+CREATE TABLE IF NOT EXISTS moves (
+    season        INTEGER NOT NULL,
+    week          INTEGER NOT NULL,
+    kind          TEXT NOT NULL,   -- TRADE | WAIVER | FREEAGENT
+    player_id     INTEGER NOT NULL,
+    player_name   TEXT,
+    position      TEXT,
+    from_team     INTEGER,         -- NULL when he came out of the free pool
+    to_team       INTEGER NOT NULL,
+    bid_amount    INTEGER,         -- waiver bid, 0 on a plain claim
+    trade_id      TEXT,            -- groups the players in one trade
+    pts_before    REAL,            -- scored that season before `week`
+    pts_after     REAL,            -- scored for `to_team` from `week` on
+    started_after REAL,            -- the part of that which was in the lineup
+    weeks_after   INTEGER,         -- weeks he stayed on that roster
+    PRIMARY KEY (season, week, player_id, to_team)
+);
+CREATE INDEX IF NOT EXISTS idx_moves_kind ON moves(kind, season);
+CREATE INDEX IF NOT EXISTS idx_moves_trade ON moves(trade_id);
+
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -149,6 +178,6 @@ def replace_season(conn, season: int):
 
     Scoped to one season so a failed 2026 refresh cannot damage 2022-2025.
     """
-    for table in ("teams", "matchups", "lineups", "team_weeks"):
+    for table in ("teams", "matchups", "lineups", "team_weeks", "moves"):
         conn.execute(f"DELETE FROM {table} WHERE season = ?", (season,))
     conn.execute("DELETE FROM seasons WHERE season = ?", (season,))

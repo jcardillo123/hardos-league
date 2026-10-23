@@ -342,6 +342,26 @@ table.matrix td.none { color: #4a535f; }
   margin-left: 7px;
 }
 
+/* Trade grades. Six letters, four colours: the pill has to be legible running
+   down a column, and A+ next to A is a distinction the number beside it
+   already makes. */
+.grade {
+  display: inline-block;
+  min-width: 24px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.g-a { color: var(--good); border-color: rgba(6, 214, 160, .4); background: rgba(6, 214, 160, .1); }
+.g-b { color: var(--accent); border-color: rgba(77, 163, 255, .4); background: rgba(77, 163, 255, .1); }
+.g-c { color: var(--muted); }
+.g-d { color: var(--me); border-color: rgba(255, 200, 87, .4); background: rgba(255, 200, 87, .1); }
+.g-f { color: var(--bad); border-color: rgba(255, 107, 107, .4); background: rgba(255, 107, 107, .1); }
+
 .grid2 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); }
 
 .empty { color: var(--muted); padding: 24px 0; }

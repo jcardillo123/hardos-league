@@ -621,3 +621,213 @@ def record_book(conn) -> dict:
             "WHERE tw.result='W' AND tw.actual > 0 "
             "ORDER BY tw.actual ASC LIMIT 10"),
     }
+
+
+# --------------------------------------------------------------------------- #
+#  trades and waiver pickups
+# --------------------------------------------------------------------------- #
+
+# Letter grades are cut from the z-score of a side's net points. The thresholds
+# are conventional rather than derived; what makes them mean anything is that
+# the distribution behind them is always the whole league history, so a B in
+# 2022 is a B in 2026 and narrowing the scope control never re-grades a trade.
+GRADE_CUTS = ((1.5, "A+"), (0.8, "A"), (0.3, "B"), (-0.3, "C"), (-0.8, "D"))
+
+
+def _grade(z: float | None) -> str:
+    if z is None:
+        return "-"
+    for cut, letter in GRADE_CUTS:
+        if z >= cut:
+            return letter
+    return "F"
+
+
+def trade_grades(conn, season: int | None = None) -> list[dict]:
+    """One row per side of every trade, with what that manager got and gave.
+
+    The grade answers the only question hindsight can answer: from the week of
+    the trade onwards, did the players received outscore the players sent away?
+    A player's `pts_after` is counted for the team that received him and only
+    for as long as he stayed there, so trading for a player and cutting him two
+    weeks later earns two weeks of credit and no more.
+
+    `pts_before` is the other half and is reported but never graded. It is what
+    each player had already scored that season when the trade was made, which is
+    what the two managers were actually looking at. A side that gave up a player
+    with 150 points behind him and 20 ahead of him sold at exactly the right
+    moment, and that is only visible with both numbers side by side.
+
+    Every side of every trade in league history is graded together and the list
+    is filtered afterwards, so the season control cannot change a letter.
+    """
+    rows = [dict(r) for r in conn.execute(
+        "SELECT m.season, m.week, m.trade_id, m.player_id, m.player_name, "
+        "       m.position, m.from_team, m.to_team, m.pts_before, m.pts_after, "
+        "       m.started_after, m.weeks_after "
+        "FROM moves m WHERE m.kind = 'TRADE' "
+        "ORDER BY m.trade_id, m.pts_after DESC, m.player_id"
+    )]
+    labels = {(r["season"], r["team_id"]): dict(r) for r in conn.execute(
+        "SELECT season, team_id, owner_guid, owner_label, team_name FROM teams"
+    )}
+
+    # sides[trade_id][team_id] = {"got": [...], "gave": [...]}
+    sides: dict = {}
+    when: dict = {}
+    for r in rows:
+        when[r["trade_id"]] = (r["season"], r["week"])
+        bags = sides.setdefault(r["trade_id"], {})
+        player = {k: r[k] for k in ("player_id", "player_name", "position",
+                                    "pts_before", "pts_after", "started_after",
+                                    "weeks_after")}
+        for team in (r["to_team"], r["from_team"]):
+            bags.setdefault(team, {"got": [], "gave": []})
+        bags[r["to_team"]]["got"].append(player)
+        bags[r["from_team"]]["gave"].append(player)
+
+    def total(bag, key):
+        return round(sum(p[key] for p in bag), 2)
+
+    out = []
+    for trade_id, bags in sides.items():
+        season_, week = when[trade_id]
+        for team_id, bag in bags.items():
+            others = sorted(t for t in bags if t != team_id)
+            me = labels.get((season_, team_id)) or {}
+            opp = labels.get((season_, others[0])) if others else {}
+            got_after, gave_after = total(bag["got"], "pts_after"), \
+                total(bag["gave"], "pts_after")
+            got_start, gave_start = total(bag["got"], "started_after"), \
+                total(bag["gave"], "started_after")
+            out.append({
+                "season": season_, "week": week, "trade_id": trade_id,
+                "team_id": team_id,
+                "owner_guid": me.get("owner_guid"),
+                "owner_label": me.get("owner_label"),
+                "team_name": me.get("team_name"),
+                "opp_team_id": others[0] if others else None,
+                "opp_owner_label": (opp or {}).get("owner_label"),
+                "got": bag["got"], "gave": bag["gave"],
+                "got_after": got_after, "gave_after": gave_after,
+                "net": round(got_after - gave_after, 2),
+                "got_started": got_start, "gave_started": gave_start,
+                "net_started": round(got_start - gave_start, 2),
+                "got_before": total(bag["got"], "pts_before"),
+                "gave_before": total(bag["gave"], "pts_before"),
+                # A trade the roster diff could only see one direction of. It is
+                # graded like any other, but the UI flags it, because whatever
+                # came back the other way is missing from the grade too.
+                "one_sided": not (bag["got"] and bag["gave"]),
+            })
+
+    nets = [d["net"] for d in out]
+    mean = sum(nets) / len(nets) if nets else 0.0
+    sd = (sum((x - mean) ** 2 for x in nets) / len(nets)) ** 0.5 if nets else 0.0
+    for d in out:
+        d["z"] = round((d["net"] - mean) / sd, 2) if sd else None
+        d["grade"] = _grade(d["z"])
+
+    if season is not None:
+        out = [d for d in out if d["season"] == season]
+    out.sort(key=lambda d: (-d["net"], -d["season"], d["week"], d["trade_id"],
+                            d["team_id"]))
+    return out
+
+
+def waiver_pickups(conn, season: int | None = None,
+                   limit: int = 60) -> list[dict]:
+    """The best adds off waivers or free agency, by what they went on to score.
+
+    Ranked on `started_after` rather than `pts_after`, because a pickup is only
+    worth what the manager actually got out of his lineup and the two differ a
+    lot: a streaming quarterback who sat half the weeks he was owned scored
+    plenty of points that never reached a scoreboard. Both are reported.
+
+    `pts_before` is almost always zero here and is not shown. A player sitting
+    in the free pool is on no roster, so nothing he scored there is in `lineups`
+    to be counted.
+    """
+    where = "WHERE m.kind IN ('WAIVER', 'FREEAGENT') AND m.player_name IS NOT NULL"
+    params: list = []
+    if season is not None:
+        where += " AND m.season = ?"
+        params.append(season)
+    params.append(limit)
+
+    rows = conn.execute(
+        f"SELECT m.season, m.week, m.kind, m.player_id, m.player_name, "
+        f"       m.position, m.to_team, m.pts_after, m.started_after, "
+        f"       m.weeks_after, t.owner_guid, t.owner_label, t.team_name "
+        f"FROM moves m "
+        f"JOIN teams t ON t.season = m.season AND t.team_id = m.to_team "
+        f"{where} "
+        f"ORDER BY m.started_after DESC, m.pts_after DESC, m.season DESC, "
+        f"         m.week, m.player_id LIMIT ?", params
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def transaction_summary(conn, season: int | None = None) -> list[dict]:
+    """Per-manager activity: how much each one dealt, and how it worked out.
+
+    Joined on `owner_guid`, so a manager who renamed his team mid-history is one
+    row. `trade_net` sums the net of every side that manager was on, which is as
+    close as this gets to a scoreboard for trading: positive means the players
+    he brought in outscored the ones he sent away.
+    """
+    blank = {"trades": 0, "trade_net": 0.0, "got_after": 0.0,
+             "gave_after": 0.0, "wins": 0, "pickups": 0, "pickup_started": 0.0}
+
+    agg: dict = {}
+
+    def slot(guid, label=None):
+        d = agg.setdefault(guid, {"owner_guid": guid, "owner_label": label,
+                                  **blank})
+        d["owner_label"] = d["owner_label"] or label
+        return d
+
+    for g in trade_grades(conn, season):
+        if not g["owner_guid"]:
+            continue
+        d = slot(g["owner_guid"], g["owner_label"])
+        d["trades"] += 1
+        d["trade_net"] = round(d["trade_net"] + g["net"], 2)
+        d["got_after"] = round(d["got_after"] + g["got_after"], 2)
+        d["gave_after"] = round(d["gave_after"] + g["gave_after"], 2)
+        d["wins"] += 1 if g["net"] > 0 else 0
+
+    rows = conn.execute(
+        "SELECT t.owner_guid, COUNT(*) AS pickups, "
+        "       ROUND(SUM(m.started_after), 2) AS pickup_started "
+        "FROM moves m "
+        "JOIN teams t ON t.season = m.season AND t.team_id = m.to_team "
+        "WHERE m.kind IN ('WAIVER', 'FREEAGENT') "
+        + ("AND m.season = ? " if season is not None else "") +
+        "GROUP BY t.owner_guid",
+        (season,) if season is not None else ()
+    ).fetchall()
+    for r in rows:
+        d = slot(r["owner_guid"])
+        d["pickups"] = r["pickups"]
+        d["pickup_started"] = r["pickup_started"] or 0.0
+
+    # The pickup list is already ordered by impact, so the first row seen for a
+    # manager is his best one.
+    best: dict = {}
+    for r in waiver_pickups(conn, season, limit=1000000):
+        best.setdefault(r["owner_guid"], r)
+
+    owners = {r["owner_guid"]: r["label"] for r in
+              conn.execute("SELECT owner_guid, label FROM owners")}
+    for guid, d in agg.items():
+        d["owner_label"] = d["owner_label"] or owners.get(guid)
+        b = best.get(guid)
+        d["best_pickup"] = b["player_name"] if b else None
+        d["best_pickup_pts"] = b["started_after"] if b else None
+        d["best_pickup_season"] = b["season"] if b else None
+
+    out = list(agg.values())
+    out.sort(key=lambda d: (-d["trade_net"], -d["pickup_started"],
+                            d["owner_label"] or "", d["owner_guid"]))
+    return out
